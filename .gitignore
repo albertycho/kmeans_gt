@@ -25,3 +25,7 @@ gmon.out
 profiles
 *.cluster_centres
 *.membership
+
+
+.vs
+.vs/*
