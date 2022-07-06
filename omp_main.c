@@ -71,6 +71,9 @@ int main(int argc, char **argv) {
     is_perform_atomic = 0;
     filename          = NULL;
 
+    //enter FF
+    __asm__ __volatile__("xchg %%rcx, %%rcx;" : : "c"(1026));
+
     while ( (opt=getopt(argc,argv,"p:i:n:t:abdo"))!= EOF) {
         switch (opt) {
             case 'i': filename=optarg;
@@ -119,6 +122,10 @@ int main(int argc, char **argv) {
     /* membership: the cluster id for each data object */
     membership = (int*) malloc(numObjs * sizeof(int));
     assert(membership != NULL);
+
+    //exit FF
+    __asm__ __volatile__("xchg %%rcx, %%rcx;" : : "c"(1025)); 
+
 
     clusters = omp_kmeans(is_perform_atomic, objects, numCoords, numObjs,
                           numClusters, threshold, membership);
