@@ -54,6 +54,7 @@ LIBS        =
 #
 OMPFLAGS    = -fopenmp
 
+#CC          = gcc -O3 
 CC          = gcc
 MPICC       = mpicc
 NVCC        = nvcc
