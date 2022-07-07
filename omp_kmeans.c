@@ -13,7 +13,9 @@
 /*   Author:  Wei-keng Liao                                                  */
 /*            ECE Department, Northwestern University                        */
 /*            email: wkliao@ece.northwestern.edu                             */
-/*   Copyright, 2005, Wei-keng Liao                                          */
+/*                                                                           */
+/*   Copyright (C) 2005, Northwestern University                             */
+/*   See COPYRIGHT notice in top-level directory.                            */
 /*                                                                           */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
@@ -68,20 +70,19 @@ int find_nearest_cluster(int     numClusters, /* no. clusters */
 
 /*----< kmeans_clustering() >------------------------------------------------*/
 /* return an array of cluster centers of size [numClusters][numCoords]       */
-float** omp_kmeans(int     is_perform_atomic, /* in: */
-                   float **objects,           /* in: [numObjs][numCoords] */
-                   int     numCoords,         /* no. coordinates */
-                   int     numObjs,           /* no. objects */
-                   int     numClusters,       /* no. clusters */
-                   float   threshold,         /* % objects change membership */
-                   int    *membership)        /* out: [numObjs] */
+int omp_kmeans(int     is_perform_atomic, /* in: */
+               float **objects,           /* in: [numObjs][numCoords] */
+               int     numCoords,         /* no. coordinates */
+               int     numObjs,           /* no. objects */
+               int     numClusters,       /* no. clusters */
+               float   threshold,         /* % objects change membership */
+               int    *membership,        /* out: [numObjs] */
+               float **clusters)          /* out: [numClusters][numCoords] */
 {
-
     int      i, j, k, index, loop=0;
     int     *newClusterSize; /* [numClusters]: no. objects assigned in each
                                 new cluster */
     float    delta;          /* % of objects change their clusters */
-    float  **clusters;       /* out: [numClusters][numCoords] */
     float  **newClusters;    /* [numClusters][numCoords] */
     double   timing;
 
@@ -90,20 +91,6 @@ float** omp_kmeans(int     is_perform_atomic, /* in: */
     float ***local_newClusters;    /* [nthreads][numClusters][numCoords] */
 
     nthreads = omp_get_max_threads();
-
-    /* allocate a 2D space for returning variable clusters[] (coordinates
-       of cluster centers) */
-    clusters    = (float**) malloc(numClusters *             sizeof(float*));
-    assert(clusters != NULL);
-    clusters[0] = (float*)  malloc(numClusters * numCoords * sizeof(float));
-    assert(clusters[0] != NULL);
-    for (i=1; i<numClusters; i++)
-        clusters[i] = clusters[i-1] + numCoords;
-
-    /* pick first numClusters elements of objects[] as initial cluster centers*/
-    for (i=0; i<numClusters; i++)
-        for (j=0; j<numCoords; j++)
-            clusters[i][j] = objects[i][j];
 
     /* initialize membership[] */
     for (i=0; i<numObjs; i++) membership[i] = -1;
@@ -252,6 +239,6 @@ float** omp_kmeans(int     is_perform_atomic, /* in: */
     free(newClusters);
     free(newClusterSize);
 
-    return clusters;
+    return 1;
 }
 

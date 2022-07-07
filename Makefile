@@ -1,5 +1,3 @@
-# vim:set ts=8 sw=8 sts=0 noet:
-
 #  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #    File:         Makefile                                                  */
 #    Description:  Makefile for programs running a simple k-means clustering */
@@ -8,82 +6,81 @@
 #    Author:  Wei-keng Liao                                                  */
 #             ECE Department Northwestern University                         */
 #             email: wkliao@ece.northwestern.edu                             */
-#    Copyright, 2005, Wei-keng Liao                                          */
+#                                                                            */
+#    Copyright (C) 2005, Northwestern University                             */
+#    See COPYRIGHT notice in top-level directory.                            */
 #                                                                            */
 #  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-# Copyright (c) 2005 Wei-keng Liao
-# Copyright (c) 2011 Serban Giuroiu
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-
-# ------------------------------------------------------------------------------
-
 .KEEP_STATE:
 
-all: seq omp cuda mpi
+all: seq omp mpi
 
-DFLAGS      =
-OPTFLAGS    = -O -NDEBUG
-OPTFLAGS    = -g -pg
+ENABLE_PNETCDF = no
+PNETCDF_DIR    = $(HOME)/PnetCDF
+
+CC             = gcc
+OMPCC          = gcc
+MPICC          = mpicc
+
 INCFLAGS    = -I.
-CFLAGS      = $(OPTFLAGS) $(DFLAGS) $(INCFLAGS) -DBLOCK_SHARED_MEM_OPTIMIZATION=1
-NVCCFLAGS   = $(CFLAGS) --ptxas-options=-v
+#OPTFLAGS    = -O2 -DNDEBUG
+OPTFLAGS    = -O3 -DNDEBUG
 LDFLAGS     = $(OPTFLAGS)
-LIBS        =
 
-# please check the compile to the one you use and the openmp flag
-# Here, I am using gcc and its openmp compile flag is -fopenmp
-# If icc is used, please us -opnemp
+ifeq ($(ENABLE_PNETCDF), yes)
+INCFLAGS   += -I$(PNETCDF_DIR)/include
+DFLAGS     += -D_PNETCDF_BUILT
+LIBS       += -L$(PNETCDF_DIR)/lib -lpnetcdf
+endif
+
+CFLAGS      = $(OPTFLAGS) $(DFLAGS) $(INCFLAGS)
+
+
+# please check the compile manual for the openmp flag
+# Here, I am using gcc and the flag is -fopenmp
+# If icc is used, it is -opnemp
 #
 OMPFLAGS    = -fopenmp
 
-#CC          = gcc -O3 
-CC          = gcc
-MPICC       = mpicc
-NVCC        = nvcc
-
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+ifeq ($(ENABLE_PNETCDF), yes)
+OMPCC       = $(MPICC)
+endif
 
 H_FILES     = kmeans.h
+
+COMM_SRC = file_io.c util.c
 
 #------   OpenMP version -----------------------------------------
 OMP_SRC     = omp_main.c \
 	      omp_kmeans.c
 
-OMP_OBJ     = $(OMP_SRC:%.c=%.o)
+OMP_OBJ     = $(OMP_SRC:%.c=%.o) $(COMM_SRC:%.c=%.o)
+
+ifeq ($(ENABLE_PNETCDF), yes)
+OMP_OBJ    += pnetcdf_io.o
+endif
+
+omp_main.o: omp_main.c $(H_FILES)
+	$(OMPCC) $(CFLAGS) $(OMPFLAGS) -c $*.c
 
 omp_kmeans.o: omp_kmeans.c $(H_FILES)
-	$(CC) $(CFLAGS) $(OMPFLAGS) -c omp_kmeans.c
+	$(OMPCC) $(CFLAGS) $(OMPFLAGS) -c $*.c
 
 omp: omp_main
-omp_main: $(OMP_OBJ) file_io.o
-	$(CC) $(LDFLAGS) $(OMPFLAGS) -o omp_main $(OMP_OBJ) file_io.o $(LIBS)
+omp_main: $(OMP_OBJ)
+	$(OMPCC) $(LDFLAGS) $(OMPFLAGS) -o $@ $(OMP_OBJ) $(LIBS)
 
 #------   MPI version -----------------------------------------
 MPI_SRC     = mpi_main.c   \
               mpi_kmeans.c \
-              mpi_io.c     \
-	      file_io.c
+              mpi_io.c
 
-MPI_OBJ     = $(MPI_SRC:%.c=%.o)
+ifeq ($(ENABLE_PNETCDF), yes)
+MPI_SRC    += pnetcdf_io.c
+endif
+
+MPI_OBJ     = $(MPI_SRC:%.c=%.o) $(COMM_SRC:%.c=%.o)
 
 mpi_main.o: mpi_main.c $(H_FILES)
 	$(MPICC) $(CFLAGS) -c $*.c
@@ -94,45 +91,78 @@ mpi_kmeans.o: mpi_kmeans.c $(H_FILES)
 mpi_io.o: mpi_io.c $(H_FILES)
 	$(MPICC) $(CFLAGS) -c $*.c
 
+pnetcdf_io.o: pnetcdf_io.c $(H_FILES)
+	$(MPICC) $(CFLAGS) -c $*.c
+
 mpi: mpi_main
 mpi_main: $(MPI_OBJ) $(H_FILES)
-	$(MPICC) $(LDFLAGS) -o mpi_main $(MPI_OBJ) $(LIBS)
+	$(MPICC) $(LDFLAGS) -o $@ $(MPI_OBJ) $(LIBS)
+
+bin2nc: bin2nc.c
+	$(MPICC) $(CFLAGS) $(LDFLAGS) $< -o $@ $(LIBS)
 
 #------   sequential version -----------------------------------------
 SEQ_SRC     = seq_main.c   \
               seq_kmeans.c \
-	      file_io.c    \
 	      wtime.c
 
-SEQ_OBJ     = $(SEQ_SRC:%.c=%.o)
+SEQ_OBJ     = $(SEQ_SRC:%.c=%.o) $(COMM_SRC:%.c=%.o)
 
 $(SEQ_OBJ): $(H_FILES)
 
+seq_main.o: seq_main.c $(H_FILES)
+	$(CC) $(CFLAGS) -c $*.c
+
+seq_kmeans.o: seq_kmeans.c $(H_FILES)
+	$(CC) $(CFLAGS) -c $*.c
+
+wtime.o: wtime.c
+	$(CC) $(CFLAGS) -c $*.c
+
 seq: seq_main
 seq_main: $(SEQ_OBJ) $(H_FILES)
-	$(CC) $(LDFLAGS) -o seq_main $(SEQ_OBJ) $(LIBS)
+	$(CC) $(LDFLAGS) -o $@ $(SEQ_OBJ) $(LIBS)
 
-# ------------------------------------------------------------------------------
-# CUDA Version
+IMAGE_FILES =   color100.txt   color17695.bin   color17695.nc \
+                 edge100.txt    edge17695.bin    edge17695.nc \
+              texture100.txt texture17695.bin texture17695.nc
 
-%.o : %.cu
-	$(NVCC) $(NVCCFLAGS) -o $@ -c $<
+INPUTS = $(IMAGE_FILES:%=Image_data/%)
 
-CUDA_C_SRC = cuda_main.cu cuda_io.cu cuda_wtime.cu
-CUDA_CU_SRC = cuda_kmeans.cu
+PACKING_LIST = $(COMM_SRC) $(SEQ_SRC) $(OMP_SRC) $(MPI_SRC) $(H_FILES) \
+               Makefile README COPYRIGHT sample.output bin2nc.c
 
-CUDA_C_OBJ = $(CUDA_C_SRC:%.cu=%.o)
-CUDA_CU_OBJ = $(CUDA_CU_SRC:%.cu=%.o)
+dist:
+	dist_dir=parallel-kmeans \
+	&& rm -rf $$dist_dir $$dist_dir.tar.gz\
+	&& mkdir -p $$dist_dir/Image_data \
+	&& cp $(PACKING_LIST) $$dist_dir \
+	&& cp $(INPUTS) $$dist_dir/Image_data \
+	&& tar -cf - $$dist_dir | gzip > $$dist_dir.tar.gz \
+	&& rm -rf $$dist_dir
 
-cuda: cuda_main
-cuda_main: $(CUDA_C_OBJ) $(CUDA_CU_OBJ)
-	$(NVCC) $(LDFLAGS) -o $@ $(CUDA_C_OBJ) $(CUDA_CU_OBJ)
-
-#---------------------------------------------------------------------
 clean:
-	rm -rf *.o omp_main seq_main mpi_main cuda_main \
-	       core* .make.state gmon.out     \
-               *.cluster_centres *.membership \
-               Image_data/*.cluster_centres   \
-               Image_data/*.membership        \
-               profiles/
+	rm -rf *.o omp_main seq_main mpi_main \
+		bin2nc core* .make.state              \
+		*.cluster_centres *.membership \
+		*.cluster_centres.nc *.membership.nc \
+		Image_data/*.cluster_centres Image_data/*.membership \
+		Image_data/*.cluster_centres.nc Image_data/*.membership.nc
+
+check: all
+	# sequential K-means ---------------------------------------------------
+	seq_main -q -b -n 4 -i Image_data/color17695.bin
+	seq_main -q    -n 4 -i Image_data/color100.txt
+	# OpenMP K-means using pragma atomic -----------------------------------
+	omp_main -q -a -b -n 4 -i Image_data/color17695.bin
+	omp_main -q -a    -n 4 -i Image_data/color100.txt
+	# MPI K-means ----------------------------------------------------------
+	mpiexec -n 4 mpi_main -q -b -n 4 -i Image_data/color17695.bin
+	mpiexec -n 4 mpi_main -q    -n 4 -i Image_data/color100.txt
+ifeq ($(ENABLE_PNETCDF), yes)
+	# MPI K-means using PnetCDF --------------------------------------------
+	mpiexec -n 4 mpi_main -q -n 4 -i Image_data/color17695.nc -v color17695
+	# MPI+OpenMP using PnetCDF ---------------------------------------------
+	mpiexec -n 1 omp_main -q -a -n 4 -i Image_data/color17695.nc -v color17695
+endif
+

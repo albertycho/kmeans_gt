@@ -1,5 +1,5 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/*   File:         seq_kmeans.c  (sequential version)                        */
+/*   File:         mpi_kmeans.c  (MPI version)                               */
 /*   Description:  Implementation of simple k-means clustering algorithm     */
 /*                 This program takes an array of N data objects, each with  */
 /*                 M coordinates and performs a k-means clustering given a   */
@@ -13,7 +13,9 @@
 /*   Author:  Wei-keng Liao                                                  */
 /*            ECE Department, Northwestern University                        */
 /*            email: wkliao@ece.northwestern.edu                             */
-/*   Copyright, 2005, Wei-keng Liao                                          */
+/*                                                                           */
+/*   Copyright (C) 2005, Northwestern University                             */
+/*   See COPYRIGHT notice in top-level directory.                            */
 /*                                                                           */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
@@ -148,11 +150,13 @@ int mpi_kmeans(float    **objects,     /* in: [numObjs][numCoords] */
             double maxTime;
             curT = MPI_Wtime() - curT;
             MPI_Reduce(&curT, &maxTime, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
-            if (rank == 0) printf("%2d: loop=%d time=%f sec\n",rank,loop,curT);
+            if (rank == 0)
+                printf("%2d: loop=%d time=%f sec\n",rank,loop,curT);
         }
     } while (delta > threshold && loop++ < 500);
 
-    if (_debug && rank == 0) printf("%2d: delta=%f threshold=%f loop=%d\n",rank,delta,threshold,loop);
+    if (_debug && rank == 0)
+        printf("%2d: delta=%f threshold=%f loop=%d\n",rank,delta,threshold,loop);
 
     free(newClusters[0]);
     free(newClusters);

@@ -5,7 +5,9 @@
 /*   Author:  Wei-keng Liao                                                  */
 /*            ECE Department Northwestern University                         */
 /*            email: wkliao@ece.northwestern.edu                             */
-/*   Copyright, 2005, Wei-keng Liao                                          */
+/*                                                                           */
+/*   Copyright (C) 2005, Northwestern University                             */
+/*   See COPYRIGHT notice in top-level directory.                            */
 /*                                                                           */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 

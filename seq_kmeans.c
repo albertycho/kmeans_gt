@@ -13,32 +13,11 @@
 /*   Author:  Wei-keng Liao                                                  */
 /*            ECE Department, Northwestern University                        */
 /*            email: wkliao@ece.northwestern.edu                             */
-/*   Copyright, 2005, Wei-keng Liao                                          */
+/*                                                                           */
+/*   Copyright (C) 2005, Northwestern University                             */
+/*   See COPYRIGHT notice in top-level directory.                            */
 /*                                                                           */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-// Copyright (c) 2005 Wei-keng Liao
-// Copyright (c) 2011 Serban Giuroiu
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
-// -----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,34 +68,20 @@ int find_nearest_cluster(int     numClusters, /* no. clusters */
 
 /*----< seq_kmeans() >-------------------------------------------------------*/
 /* return an array of cluster centers of size [numClusters][numCoords]       */
-float** seq_kmeans(float **objects,      /* in: [numObjs][numCoords] */
-                   int     numCoords,    /* no. features */
-                   int     numObjs,      /* no. objects */
-                   int     numClusters,  /* no. clusters */
-                   float   threshold,    /* % objects change membership */
-                   int    *membership,   /* out: [numObjs] */
-                   int    *loop_iterations)
+int seq_kmeans(float **objects,      /* in: [numObjs][numCoords] */
+               int     numCoords,    /* no. features */
+               int     numObjs,      /* no. objects */
+               int     numClusters,  /* no. clusters */
+               float   threshold,    /* % objects change membership */
+               int    *membership,   /* out: [numObjs] */
+               float **clusters)     /* out: [numClusters][numCoords] */
+
 {
     int      i, j, index, loop=0;
     int     *newClusterSize; /* [numClusters]: no. objects assigned in each
                                 new cluster */
     float    delta;          /* % of objects change their clusters */
-    float  **clusters;       /* out: [numClusters][numCoords] */
     float  **newClusters;    /* [numClusters][numCoords] */
-
-    /* allocate a 2D space for returning variable clusters[] (coordinates
-       of cluster centers) */
-    clusters    = (float**) malloc(numClusters *             sizeof(float*));
-    assert(clusters != NULL);
-    clusters[0] = (float*)  malloc(numClusters * numCoords * sizeof(float));
-    assert(clusters[0] != NULL);
-    for (i=1; i<numClusters; i++)
-        clusters[i] = clusters[i-1] + numCoords;
-
-    /* pick first numClusters elements of objects[] as initial cluster centers*/
-    for (i=0; i<numClusters; i++)
-        for (j=0; j<numCoords; j++)
-            clusters[i][j] = objects[i][j];
 
     /* initialize membership[] */
     for (i=0; i<numObjs; i++) membership[i] = -1;
@@ -145,13 +110,13 @@ float** seq_kmeans(float **objects,      /* in: [numObjs][numCoords] */
             /* assign the membership to object i */
             membership[i] = index;
 
-            /* update new cluster centers : sum of objects located within */
+            /* update new cluster center : sum of objects located within */
             newClusterSize[index]++;
             for (j=0; j<numCoords; j++)
                 newClusters[index][j] += objects[i][j];
         }
 
-        /* average the sum and replace old cluster centers with newClusters */
+        /* average the sum and replace old cluster center with newClusters */
         for (i=0; i<numClusters; i++) {
             for (j=0; j<numCoords; j++) {
                 if (newClusterSize[i] > 0)
@@ -164,12 +129,10 @@ float** seq_kmeans(float **objects,      /* in: [numObjs][numCoords] */
         delta /= numObjs;
     } while (delta > threshold && loop++ < 500);
 
-    *loop_iterations = loop + 1;
-
     free(newClusters[0]);
     free(newClusters);
     free(newClusterSize);
 
-    return clusters;
+    return 1;
 }
 

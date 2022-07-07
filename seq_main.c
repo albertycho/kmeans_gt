@@ -12,32 +12,11 @@
 /*   Author:  Wei-keng Liao                                                  */
 /*            ECE Department Northwestern University                         */
 /*            email: wkliao@ece.northwestern.edu                             */
-/*   Copyright, 2005, Wei-keng Liao                                          */
+/*                                                                           */
+/*   Copyright (C) 2005, Northwestern University                             */
+/*   See COPYRIGHT notice in top-level directory.                            */
 /*                                                                           */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-// Copyright (c) 2005 Wei-keng Liao
-// Copyright (c) 2011 Serban Giuroiu
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
-// -----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,11 +34,14 @@ static void usage(char *argv0, float threshold) {
     char *help =
         "Usage: %s [switches] -i filename -n num_clusters\n"
         "       -i filename    : file containing data to be clustered\n"
+        "       -c centers     : file containing initial centers. default: filename\n"
         "       -b             : input file is in binary format (default no)\n"
         "       -n num_clusters: number of clusters (K must > 1)\n"
         "       -t threshold   : threshold value (default %.4f)\n"
         "       -o             : output timing results (default no)\n"
-        "       -d             : enable debug mode\n";
+        "       -q             : quiet mode\n"
+        "       -d             : enable debug mode\n"
+        "       -h             : print this help information\n";
     fprintf(stderr, help, argv0, threshold);
     exit(-1);
 }
@@ -69,29 +51,31 @@ int main(int argc, char **argv) {
            int     opt;
     extern char   *optarg;
     extern int     optind;
-           int     i, j;
-           int     isBinaryFile, is_output_timing;
+           int     i, j, isBinaryFile, is_output_timing, verbose;
 
            int     numClusters, numCoords, numObjs;
            int    *membership;    /* [numObjs] */
-           char   *filename;
+           char   *filename, *center_filename;
            float **objects;       /* [numObjs][numCoords] data objects */
            float **clusters;      /* [numClusters][numCoords] cluster center */
            float   threshold;
            double  timing, io_timing, clustering_timing;
-           int     loop_iterations;
 
     /* some default values */
     _debug           = 0;
+    verbose          = 1;
     threshold        = 0.001;
     numClusters      = 0;
     isBinaryFile     = 0;
     is_output_timing = 0;
     filename         = NULL;
+    center_filename  = NULL;
 
-    while ( (opt=getopt(argc,argv,"p:i:n:t:abdo"))!= EOF) {
+    while ( (opt=getopt(argc,argv,"p:i:c:n:t:abdohq"))!= EOF) {
         switch (opt) {
             case 'i': filename=optarg;
+                      break;
+            case 'c': center_filename=optarg;
                       break;
             case 'b': isBinaryFile = 1;
                       break;
@@ -101,22 +85,77 @@ int main(int argc, char **argv) {
                       break;
             case 'o': is_output_timing = 1;
                       break;
+            case 'q': verbose = 0;
+                      break;
             case 'd': _debug = 1;
                       break;
-            case '?': usage(argv[0], threshold);
-                      break;
+            case 'h':
             default: usage(argv[0], threshold);
                       break;
         }
     }
+    if (center_filename == NULL)
+        center_filename = filename;
 
     if (filename == 0 || numClusters <= 1) usage(argv[0], threshold);
 
     if (is_output_timing) io_timing = wtime();
 
     /* read data points from file ------------------------------------------*/
+    printf("reading data points from file %s\n",filename);
+
     objects = file_read(isBinaryFile, filename, &numObjs, &numCoords);
     if (objects == NULL) exit(1);
+
+    if (numObjs < numClusters) {
+        printf("Error: number of clusters must be larger than the number of data points to be clustered.\n");
+        free(objects[0]);
+        free(objects);
+        return 1;
+    }
+
+    /* allocate a 2D space for clusters[] (coordinates of cluster centers)
+       this array should be the same across all processes                  */
+    clusters    = (float**) malloc(numClusters *             sizeof(float*));
+    assert(clusters != NULL);
+    clusters[0] = (float*)  malloc(numClusters * numCoords * sizeof(float));
+    assert(clusters[0] != NULL);
+    for (i=1; i<numClusters; i++)
+        clusters[i] = clusters[i-1] + numCoords;
+
+    /* read the first numClusters elements from file center_filename as the
+     * initial cluster centers*/
+    if (center_filename != filename) {
+        printf("reading initial %d centers from file %s\n", numClusters,
+               center_filename);
+        /* read the first numClusters data points from file */
+        read_n_objects(isBinaryFile, center_filename, numClusters,
+                       numCoords, clusters);
+    }
+    else {
+        printf("selecting the first %d elements as initial centers\n",
+               numClusters);
+        /* copy the first numClusters elements in feature[] */
+        for (i=0; i<numClusters; i++)
+            for (j=0; j<numCoords; j++)
+                clusters[i][j] = objects[i][j];
+    }
+
+    /* check initial cluster centers for repeatition */
+    if (check_repeated_clusters(numClusters, numCoords, clusters) == 0) {
+        printf("Error: some initial clusters are repeated. Please select distinct initial centers\n");
+        return 1;
+    }
+
+    if (_debug) {
+        printf("Sorted initial cluster centers:\n");
+        for (i=0; i<numClusters; i++) {
+            printf("clusters[%d]=",i);
+            for (j=0; j<numCoords; j++)
+                printf(" %6.2f", clusters[i][j]);
+            printf("\n");
+        }
+    }
 
     if (is_output_timing) {
         timing            = wtime();
@@ -129,8 +168,8 @@ int main(int argc, char **argv) {
     membership = (int*) malloc(numObjs * sizeof(int));
     assert(membership != NULL);
 
-    clusters = seq_kmeans(objects, numCoords, numObjs, numClusters, threshold,
-                          membership, &loop_iterations);
+    seq_kmeans(objects, numCoords, numObjs, numClusters, threshold, membership,
+               clusters);
 
     free(objects[0]);
     free(objects);
@@ -142,7 +181,7 @@ int main(int argc, char **argv) {
 
     /* output: the coordinates of the cluster centres ----------------------*/
     file_write(filename, numClusters, numObjs, numCoords, clusters,
-               membership);
+               membership, verbose);
 
     free(membership);
     free(clusters[0]);
@@ -158,8 +197,6 @@ int main(int argc, char **argv) {
         printf("numCoords     = %d\n", numCoords);
         printf("numClusters   = %d\n", numClusters);
         printf("threshold     = %.4f\n", threshold);
-
-        printf("Loop iterations    = %d\n", loop_iterations);
 
         printf("I/O time           = %10.4f sec\n", io_timing);
         printf("Computation timing = %10.4f sec\n", clustering_timing);

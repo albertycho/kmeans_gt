@@ -1,6 +1,8 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /*   File:         mpi_read.c                                                */
-/*   Description:  This program reads data points from a file using MPI-IO   */
+/*   File:         mpi_io.c                                                  */
+/*   Description:  This program reads data points from a file and writes the */
+/*                 clustering results to files using MPI-IO                  */
 /*                 that implements a simple k-means clustering algorithm     */
 /*   Input file format:                                                      */
 /*                 ascii  file: each line contains 1 data object             */
@@ -11,13 +13,17 @@
 /*   Author:  Wei-keng Liao                                                  */
 /*            ECE Department Northwestern University                         */
 /*            email: wkliao@ece.northwestern.edu                             */
-/*   Copyright, 2005, Wei-keng Liao                                          */
+/*                                                                           */
+/*   Copyright (C) 2005, Northwestern University                             */
+/*   See COPYRIGHT notice in top-level directory.                            */
 /*                                                                           */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+extern int errno;
 
 #include <mpi.h>
 #include "kmeans.h"
@@ -31,7 +37,7 @@ float** mpi_read(int       isBinaryFile,  /* flag: 0 or 1 */
                  MPI_Comm  comm)
 {
     float    **objects;
-    int        i, j, len, divd, rem;
+    int        i, len, divd, rem;
     int        rank, nproc;
     MPI_Status status;
 
@@ -60,6 +66,11 @@ float** mpi_read(int       isBinaryFile,  /* flag: 0 or 1 */
 
         if (*numObjs <= 0 || *numCoords <= 0) {
             printf("Error: file format (%s)\n",filename);
+            MPI_Finalize();
+            exit(1);
+        }
+        if (*numObjs < nproc) {
+            printf("Error: number of data points must be larger than the number of MPI processes.\n");
             MPI_Finalize();
             exit(1);
         }
@@ -102,6 +113,11 @@ float** mpi_read(int       isBinaryFile,  /* flag: 0 or 1 */
         MPI_Bcast(numCoords, 1, MPI_INT, 0, comm);
 
         if (*numObjs == -1) {
+            MPI_Finalize();
+            exit(1);
+        }
+        if (*numObjs < nproc) {
+            printf("Error: number of data points must be larger than the number of MPI processes.\n");
             MPI_Finalize();
             exit(1);
         }
@@ -153,14 +169,15 @@ float** mpi_read(int       isBinaryFile,  /* flag: 0 or 1 */
 
 /*---< mpi_write() >---------------------------------------------------------*/
 int mpi_write(int        isOutFileBinary, /* flag: 0 or 1 */
-              char      *filename,     /* input file name */
-              int        numClusters,  /* no. clusters */
-              int        numObjs,      /* no. data objects */
-              int        numCoords,    /* no. coordinates (local) */
-              float    **clusters,     /* [numClusters][numCoords] centers */
-              int       *membership,   /* [numObjs] */
-              int        totalNumObjs, /* total no. data objects */
-              MPI_Comm   comm)
+              char      *filename,        /* input file name */
+              int        numClusters,     /* no. clusters */
+              int        numObjs,         /* no. data objects */
+              int        numCoords,       /* no. coordinates (local) */
+              float    **clusters,        /* [numClusters][numCoords] centers */
+              int       *membership,      /* [numObjs] */
+              int        totalNumObjs,    /* total no. data objects */
+              MPI_Comm   comm,
+              int        verbose)
 {
     int        divd, rem, len, err;
     int        i, j, k, rank, nproc;
@@ -184,8 +201,8 @@ int mpi_write(int        isOutFileBinary, /* flag: 0 or 1 */
     /* output: the coordinates of the cluster centres ----------------------*/
     /* only proc 0 do this, because clusters[] are the same across all proc */
     if (rank == 0) {
-        printf("Writing coordinates of K=%d cluster centers to file \"%s.cluster_centres\"\n",
-               numClusters, delim);
+        if (verbose) printf("Writing coordinates of K=%d cluster centers to file \"%s.cluster_centres\"\n",
+                            numClusters, delim);
         sprintf(outFileName, "%s.cluster_centres", filename);
         err = MPI_File_open(MPI_COMM_SELF, outFileName, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
         if (err != MPI_SUCCESS) {
@@ -216,7 +233,7 @@ int mpi_write(int        isOutFileBinary, /* flag: 0 or 1 */
     }
 
     /* output: the closest cluster centre to each of the data points --------*/
-    if (rank == 0)
+    if (rank == 0 && verbose)
         printf("Writing membership of N=%d data objects to file \"%s.membership\"\n",
                totalNumObjs, delim);
 
